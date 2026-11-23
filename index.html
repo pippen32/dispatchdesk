@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DispatchDesk — Tablero de cargas y carriers</title>
+<!--
+  FAMILIA VISUAL: «CABINA NOCTURNA» — tablero de instrumentos de camión de noche:
+  fondo asfalto casi negro, medidores (gauges) con agujas ámbar, verde fósforo de panel,
+  rojo de alerta de motor. Estructura: TABLERO OPERATIVO tipo cabina (gauges arriba,
+  columnas-kanban de estados de carga como carriles de carretera, panel lateral de carriers
+  como la consola del copiloto). Distinta a hero+tarjetas: aquí todo es instrumento de trabajo.
+-->
+<style>
+:root{
+  --asfalto:#0b0e11; --panel:#13181d; --panel2:#1a2129; --linea:#2a333d;
+  --ambar:#ffb300; --ambar2:#ff8f00; --verde:#39ff88; --verde2:#00c853;
+  --rojo:#ff3b30; --texto:#e8edf2; --muted:#8b98a5; --azul:#39c2ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--asfalto);color:var(--texto);font-family:"Segoe UI",system-ui,Arial,sans-serif;min-height:100vh;
+  background-image:radial-gradient(ellipse at 50% -10%,#1c2836 0%,transparent 55%),repeating-linear-gradient(0deg,transparent 0 46px,rgba(255,255,255,.014) 46px 47px)}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit;background:#0d1116;color:var(--texto);border:1px solid var(--linea);border-radius:8px;padding:8px 10px;font-size:14px;width:100%}
+input:focus,select:focus{outline:2px solid var(--ambar);border-color:var(--ambar)}
+label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block;margin:8px 0 4px}
+
+/* ===== Barra superior tipo cabina ===== */
+.cabina{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,#171e26,#10151b);border-bottom:3px solid var(--ambar);box-shadow:0 6px 24px rgba(0,0,0,.6)}
+.cabina-in{max-width:1460px;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:12px}
+.logo .volante{width:46px;height:46px;border:4px solid var(--ambar);border-radius:50%;position:relative;flex:none}
+.logo .volante::before,.logo .volante::after{content:"";position:absolute;background:var(--ambar)}
+.logo .volante::before{left:50%;top:4px;width:4px;height:38px;transform:translateX(-50%)}
+.logo .volante::after{left:4px;top:50%;width:34px;height:4px;transform:translateY(-50%)}
+.logo h1{font-size:26px;letter-spacing:.02em;color:#fff}
+.logo h1 span{color:var(--ambar)}
+.logo small{display:block;font-size:12px;color:var(--verde);letter-spacing:.14em;text-transform:uppercase}
+.btn{border:1px solid var(--linea);background:var(--panel2);color:var(--texto);border-radius:9px;padding:8px 14px;font-size:14px;font-weight:600}
+.btn:hover{border-color:var(--ambar)}
+.btn-ambar{background:linear-gradient(180deg,var(--ambar),var(--ambar2));color:#161006;border:none}
+.btn-verde{background:linear-gradient(180deg,#2be07a,var(--verde2));color:#04150a;border:none}
+.btn-rojo{background:#3a1512;color:#ff8a80;border-color:#6e241d}
+.btn-sm{padding:4px 9px;font-size:12px;border-radius:7px}
+
+/* ===== Franja prueba gratis ===== */
+.gratis{max-width:1460px;margin:14px auto 0;padding:0 16px}
+.gratis-in{background:linear-gradient(90deg,#2a1e00,#3a2a00 55%,#2a1e00);border:1px dashed var(--ambar);border-radius:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.gratis-in b{color:var(--ambar);font-size:16px}
+.gratis-in span{color:#ffe9b0;font-size:14px}
+.gratis-in .precios{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ===== Gauges ===== */
+.gauges{max-width:1460px;margin:14px auto 0;padding:0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.gauge{background:radial-gradient(circle at 50% 120%,#232e3a,#12171d 70%);border:1px solid var(--linea);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden}
+.gauge::after{content:"";position:absolute;inset:auto -20% -62% -20%;height:80%;border:2px solid rgba(255,179,0,.25);border-radius:50%}
+.gauge .num{font-size:34px;font-weight:800;color:#fff;line-height:1}
+.gauge .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.gauge.ambar .num{color:var(--ambar)} .gauge.verde .num{color:var(--verde)} .gauge.rojo .num{color:var(--rojo)} .gauge.azul .num{color:var(--azul)}
+
+/* ===== Alertas ===== */
+.alertas{max-width:1460px;margin:14px auto 0;padding:0 16px}
+.alerta{display:flex;gap:10px;align-items:center;background:#2b100e;border:1px solid #6e241d;color:#ffc9c4;border-radius:10px;padding:9px 13px;font-size:14px;margin-bottom:8px}
+.alerta.warn{background:#2b2105;border-color:#6e5410;color:#ffe1a1}
+.alerta .dot{width:10px;height:10px;border-radius:50%;background:var(--rojo);flex:none;box-shadow:0 0 10px var(--rojo)}
+.alerta.warn .dot{background:var(--ambar);box-shadow:0 0 10px var(--ambar)}
+.sin-alertas{background:#0e2417;border:1px solid #14532d;color:#a7f3c9;border-radius:10px;padding:9px 13px;font-size:14px}
+
+/* ===== Layout tablero ===== */
+.tablero{max-width:1460px;margin:16px auto;padding:0 16px 30px;display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.tablero{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--linea);border-radius:14px;padding:14px}
+.panel h2{font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--ambar);border-bottom:1px solid var(--linea);padding-bottom:8px;margin-bottom:10px}
+.carrier{border:1px solid var(--linea);border-radius:10px;padding:10px;margin-bottom:9px;background:var(--panel2)}
+.carrier b{font-size:15px}
+.carrier .meta{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.5}
+.carrier .ops{display:flex;gap:6px;margin-top:7px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:#26313d;color:var(--azul)}
+.badge.ok{background:#0e2e1c;color:var(--verde)} .badge.bad{background:#3a1512;color:#ff8a80}
+
+/* ===== Kanban carriles ===== */
+.kanban{display:grid;grid-template-columns:repeat(6,minmax(215px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+@media(max-width:900px){.kanban{grid-template-columns:repeat(6,240px)}}
+.carril{background:#0e1319;border:1px solid var(--linea);border-radius:12px;min-height:300px;display:flex;flex-direction:column}
+.carril header{padding:10px 12px;border-bottom:2px solid var(--ambar);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.carril header .n{background:var(--ambar);color:#161006;border-radius:20px;padding:1px 9px;font-size:12px}
+.carril .drop{padding:9px;display:flex;flex-direction:column;gap:9px;flex:1}
+.carga{background:linear-gradient(180deg,#1b232d,#151c24);border:1px solid var(--linea);border-left:4px solid var(--azul);border-radius:10px;padding:10px;font-size:13px}
+.carga.vencida{border-left-color:var(--rojo)}
+.carga h3{font-size:14px;color:#fff;margin-bottom:3px}
+.carga .ruta{color:var(--verde);font-weight:700;font-size:13px}
+.carga .det{color:var(--muted);font-size:12px;line-height:1.55;margin-top:3px}
+.carga .rate{color:var(--ambar);font-weight:800;font-size:15px}
+.docs{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.doc{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid var(--linea);background:#0d1116;color:var(--muted)}
+.doc.on{background:#0e2e1c;color:var(--verde);border-color:#14532d}
+.doc:hover{border-color:var(--verde)}
+.carga .ops{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.cobro{margin-top:7px;font-size:12px;border-top:1px dashed var(--linea);padding-top:6px}
+.cobro .venc{color:var(--rojo);font-weight:800}
+.cobro .pag{color:var(--verde);font-weight:800}
+
+/* ===== Modal ===== */
+.fondo{position:fixed;inset:0;background:rgba(3,5,8,.78);display:none;align-items:flex-start;justify-content:center;z-index:100;overflow-y:auto;padding:22px 12px}
+.fondo.abierto{display:flex}
+.modal{background:var(--panel);border:1px solid var(--ambar);border-radius:16px;max-width:560px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.7)}
+.modal h2{color:var(--ambar);font-size:19px;margin-bottom:6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.checks{display:flex;gap:14px;flex-wrap:wrap;margin-top:6px}
+.checks label{display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:14px;color:var(--texto)}
+.checks input{width:auto}
+.acciones{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.nota{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
+.pro-box{border:1px solid #14532d;background:#0e2417;border-radius:12px;padding:13px;margin-top:12px}
+.pro-box h3{color:var(--verde);font-size:14px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+footer{max-width:1460px;margin:0 auto;padding:0 16px 26px;color:var(--muted);font-size:12px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="cabina"><div class="cabina-in">
+  <div class="logo"><div class="volante"></div>
+    <div><h1>Dispatch<span>Desk</span></h1><small>Tablero de cargas y carriers</small></div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" onclick="exportar()">⬇ Exportar</button>
+    <button class="btn" onclick="document.getElementById('imp').click()">⬆ Importar</button>
+    <input type="file" id="imp" accept=".json" style="display:none" onchange="importar(event)">
+    <button class="btn" onclick="resetDemo()">↺ Demo</button>
+    <button class="btn btn-ambar" onclick="abrirCarga()">＋ Nueva carga</button>
+  </div>
+</div></div>
+
+<div class="gratis"><div class="gratis-in">
+  <div><b>🆓 PRUEBA GRATIS</b> &nbsp;<span id="planTxt">Modo demo con datos de ejemplo · hasta <b>5 cargas</b> en la versión gratis.</span></div>
+  <div class="precios">
+    <button class="btn btn-verde" onclick="comprar('Base')">Base — $49 pago único</button>
+    <button class="btn btn-ambar" onclick="comprar('Pro')">Pro — $99 pago único</button>
+  </div>
+</div></div>
+
+<div class="gauges">
+  <div class="gauge ambar"><div class="num" id="gActivas">0</div><div class="lbl">🚛 Cargas activas</div></div>
+  <div class="gauge azul"><div class="num" id="gRuta">0</div><div class="lbl">🛣️ En ruta ahora</div></div>
+  <div class="gauge verde"><div class="num" id="gCobrar">$0</div><div class="lbl">💵 Por cobrar</div></div>
+  <div class="gauge rojo"><div class="num" id="gVencido">$0</div><div class="lbl">🔴 Cobros vencidos</div></div>
+</div>
+
+<div class="alertas" id="alertas"></div>
+
+<div class="tablero">
+  <!-- Consola del copiloto: carriers -->
+  <aside class="panel">
+    <h2>🚚 Carriers</h2>
+    <div id="listaCarriers"></div>
+    <button class="btn btn-verde" style="width:100%;margin-top:4px" onclick="abrirCarrier()">＋ Añadir carrier</button>
+
+    <div class="pro-box">
+      <h3>⭐ DispatchDesk Pro</h3>
+      <p style="font-size:13px;line-height:1.55">Sin límite de cargas + plantillas descargables:</p>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        <button class="btn btn-sm" onclick="plantilla('ratecon')">📄 Rate Confirmation (plantilla)</button>
+        <button class="btn btn-sm" onclick="plantilla('contrato')">📑 Contrato Carrier–Dispatcher</button>
+      </div>
+      <p class="nota" id="proNota">Las plantillas se desbloquean con el plan Pro ($99).</p>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input id="codigoPro" placeholder="Código de licencia Pro">
+        <button class="btn btn-sm btn-ambar" onclick="activarPro()">Activar</button>
+      </div>
+    </div>
+
+    <h2 style="margin-top:16px">💰 Cobros / Facturas</h2>
+    <div id="listaCobros" style="font-size:13px;line-height:1.6"></div>
+  </aside>
+
+  <!-- Carriles kanban -->
+  <main>
+    <div class="kanban" id="kanban"></div>
+    <p class="nota">Mueve cada carga con los botones ◀ ▶ de su tarjeta o edítala. Toca un documento (Rate Con · BOL · POD) pa' marcarlo recibido. Todo se guarda solo en este navegador (localStorage) — sin servidor, sin mensualidad.</p>
+  </main>
+</div>
+
+<footer>DispatchDesk · Tablero de cargas y carriers — herramienta de Profe Shop. Tus datos viven en tu navegador; exporta una copia de seguridad cuando quieras. Soporte: swingbravo@gmail.com</footer>
+
+<!-- Modal carga -->
+<div class="fondo" id="fCarga"><div class="modal">
+  <h2 id="tCarga">Nueva carga</h2>
+  <input type="hidden" id="cId">
+  <div class="grid2">
+    <div><label>Origen</label><input id="cOrigen" placeholder="Houston, TX"></div>
+    <div><label>Destino</label><input id="cDestino" placeholder="Atlanta, GA"></div>
+    <div><label>Carrier</label><select id="cCarrier"></select></div>
+    <div><label>Estado</label><select id="cEstado"></select></div>
+    <div><label>Mercancía</label><input id="cMercancia" placeholder="Pallets de bebidas"></div>
+    <div><label>Rate / Pago al carrier ($)</label><input id="cRate" type="number" min="0" step="1" placeholder="2400"></div>
+    <div><label>Fecha de recogida</label><input id="cPickup" type="date"></div>
+    <div><label>Fecha de entrega</label><input id="cEntrega" type="date"></div>
+    <div><label>Factura al broker/cliente ($)</label><input id="cFactura" type="number" min="0" step="1" placeholder="2850"></div>
+    <div><label>Vence el cobro</label><input id="cVence" type="date"></div>
+  </div>
+  <label>Documentos recibidos</label>
+  <div class="checks">
+    <label><input type="checkbox" id="cDocRate"> Rate Con firmado</label>
+    <label><input type="checkbox" id="cDocBol"> BOL</label>
+    <label><input type="checkbox" id="cDocPod"> POD</label>
+    <label><input type="checkbox" id="cPagada"> Cobro pagado</label>
+  </div>
+  <label>Notas</label><textarea id="cNotas" rows="2" placeholder="Instrucciones, lumper, referencia…"></textarea>
+  <div class="acciones">
+    <button class="btn btn-rojo" id="btnBorrarCarga" onclick="borrarCarga()" style="margin-right:auto">Borrar</button>
+    <button class="btn" onclick="cerrar('fCarga')">Cancelar</button>
+    <button class="btn btn-ambar" onclick="guardarCarga()">Guardar carga</button>
+  </div>
+</div></div>
+
+<!-- Modal carrier -->
+<div class="fondo" id="fCarrier"><div class="modal">
+  <h2 id="tCarrier">Nuevo carrier</h2>
+  <input type="hidden" id="kId">
+  <label>Empresa / Nombre</label><input id="kNombre" placeholder="Rápido Freight LLC">
+  <div class="grid2">
+    <div><label>MC / DOT</label><input id="kMc" placeholder="MC 123456"></div>
+    <div><label>Equipo</label><input id="kEquipo" placeholder="Dry Van 53'"></div>
+    <div><label>Teléfono</label><input id="kTel" placeholder="555-010-2233"></div>
+    <div><label>Email</label><input id="kEmail" placeholder="dispatch@carrier.com"></div>
+    <div><label>Factoring</label><input id="kFactoring" placeholder="RTS Financial"></div>
+    <div><label>Seguro vence</label><input id="kSeguro" type="date"></div>
+  </div>
+  <label>Notas</label><textarea id="kNotas" rows="2"></textarea>
+  <div class="acciones">
+    <button class="btn btn-rojo" id="btnBorrarCarrier" onclick="borrarCarrier()" style="margin-right:auto">Borrar</button>
+    <button class="btn" onclick="cerrar('fCarrier')">Cancelar</button>
+    <button class="btn btn-ambar" onclick="guardarCarrier()">Guardar carrier</button>
+  </div>
+</div></div>
+
+<!-- Modal compra -->
+<div class="fondo" id="fCompra"><div class="modal">
+  <h2 id="tCompra">DispatchDesk</h2>
+  <p style="font-size:14px;line-height:1.65" id="dCompra"></p>
+  <p class="nota">Pago único, sin mensualidad. Al confirmar tu compra recibes tu código de licencia por email. Escríbenos a <b>swingbravo@gmail.com</b> con el plan que quieres y te enviamos el enlace de pago y tu código el mismo día.</p>
+  <div class="acciones">
+    <button class="btn" onclick="cerrar('fCompra')">Cerrar</button>
+    <a class="btn btn-ambar" id="mailCompra" href="#" style="text-decoration:none;display:inline-flex;align-items:center">✉️ Pedir mi licencia</a>
+  </div>
+</div></div>
+
+<script>
+const ESTADOS=["Nueva","Asignada","En ruta","Entregada","Facturada","Pagada"];
+const LIMITE_GRATIS=5, KEY="dispatchdesk_v1";
+let db=cargar();
+
+function demo(){
+  const hoy=new Date(), d=n=>{const t=new Date(hoy);t.setDate(t.getDate()+n);return t.toISOString().slice(0,10)};
+  return {plan:"gratis",
+    carriers:[
+      {id:"k1",nombre:"Rápido Freight LLC",mc:"MC 884120 · DOT 2917455",equipo:"Dry Van 53'",tel:"713-555-0142",email:"dispatch@rapidofreight.com",factoring:"RTS Financial",seguro:d(45),notas:"Corre TX → Southeast. Confiable."},
+      {id:"k2",nombre:"Lone Star Reefer Inc",mc:"MC 902377 · DOT 3102984",equipo:"Reefer 53'",tel:"214-555-0198",email:"ops@lonestarreefer.com",factoring:"OTR Solutions",seguro:d(12),notas:"Cadena de frío verificada."},
+      {id:"k3",nombre:"Andrade Flatbed LLC",mc:"MC 771905 · DOT 2655110",equipo:"Flatbed 48'",tel:"956-555-0117",email:"luis@andradeflatbed.com",factoring:"Sin factoring",seguro:d(90),notas:"Acero y materiales, TX/LA."},
+      {id:"k4",nombre:"BlueRoad Carriers LLC",mc:"MC 845611 · DOT 2877301",equipo:"Box Truck 26'",tel:"404-555-0163",email:"book@blueroadcarriers.com",factoring:"RTS Financial",seguro:d(30),notas:"Regional Southeast, parciales."}
+    ],
+    cargas:[
+      {id:"L-1041",origen:"Houston, TX",destino:"Atlanta, GA",carrier:"k1",estado:"En ruta",mercancia:"Pallets de bebidas",rate:2400,pickup:d(-1),entrega:d(1),factura:2850,vence:d(14),pagada:false,docs:{rate:true,bol:true,pod:false},notas:"Ref BOL 88412 · lumper pagado por broker"},
+      {id:"L-1042",origen:"Dallas, TX",destino:"Memphis, TN",carrier:"k2",estado:"Entregada",mercancia:"Pollo congelado 38°F",rate:1950,pickup:d(-3),entrega:d(-1),factura:2300,vence:d(-6),pagada:false,docs:{rate:true,bol:true,pod:true},notas:"POD firmado — listo pa' facturar"},
+      {id:"L-1043",origen:"Laredo, TX",destino:"Baton Rouge, LA",carrier:"k3",estado:"Facturada",mercancia:"Tubería de acero",rate:1750,pickup:d(-6),entrega:d(-4),factura:2100,vence:d(-9),pagada:false,docs:{rate:true,bol:true,pod:true},notas:"Factura #221 enviada — COBRO VENCIDO"},
+      {id:"L-1044",origen:"Fort Worth, TX",destino:"Oklahoma City, OK",carrier:"k1",estado:"Asignada",mercancia:"Muebles (parcial)",rate:950,pickup:d(1),entrega:d(2),factura:1200,vence:d(16),pagada:false,docs:{rate:true,bol:false,pod:false},notas:"Esperando confirmación de muelle"},
+      {id:"L-1045",origen:"Atlanta, GA",destino:"Charlotte, NC",carrier:"k4",estado:"Nueva",mercancia:"Cajas de retail",rate:780,pickup:d(2),entrega:d(3),factura:975,vence:d(18),pagada:false,docs:{rate:false,bol:false,pod:false},notas:"Falta rate con firmado del broker"}
+    ]};
+}
+function cargar(){try{const r=localStorage.getItem(KEY);if(r)return JSON.parse(r)}catch(e){} const s=demo();localStorage.setItem(KEY,JSON.stringify(s));return s}
+function guardar(){localStorage.setItem(KEY,JSON.stringify(db));render()}
+function uid(p){return p+Math.random().toString(36).slice(2,8)}
+function carrierDe(id){const c=db.carriers.find(x=>x.id===id);return c?c.nombre:"—"}
+function vencida(c){return !c.pagada && c.vence && new Date(c.vence)<new Date(new Date().toISOString().slice(0,10))}
+function dinero(n){return "$"+Number(n||0).toLocaleString("en-US")}
+
+function render(){
+  // gauges
+  const act=db.cargas.filter(c=>!["Pagada"].includes(c.estado));
+  document.getElementById("gActivas").textContent=act.length;
+  document.getElementById("gRuta").textContent=db.cargas.filter(c=>c.estado==="En ruta").length;
+  const cobrar=db.cargas.filter(c=>!c.pagada).reduce((s,c)=>s+Number(c.factura||0),0);
+  const venc=db.cargas.filter(c=>vencida(c)).reduce((s,c)=>s+Number(c.factura||0),0);
+  document.getElementById("gCobrar").textContent=dinero(cobrar);
+  document.getElementById("gVencido").textContent=dinero(venc);
+  document.getElementById("planTxt").innerHTML = db.plan==="pro"
+    ? "✅ <b>Plan PRO activo</b> — cargas ilimitadas y plantillas desbloqueadas."
+    : `Modo demo con datos de ejemplo · hasta <b>${LIMITE_GRATIS} cargas</b> en la versión gratis (${db.cargas.length}/${LIMITE_GRATIS}).`;
+  document.getElementById("proNota").textContent = db.plan==="pro" ? "✅ Pro activo: plantillas desbloqueadas." : "Las plantillas se desbloquean con el plan Pro ($99).";
+  // alertas
+  const A=[];
+  db.cargas.forEach(c=>{
+    if(vencida(c))A.push({t:"rojo",m:`🔴 Cobro VENCIDO: carga ${c.id} (${c.origen} → ${c.destino}) — ${dinero(c.factura)} venció el ${c.vence}.`});
+    if(c.estado==="Entregada"&&!c.docs.pod)A.push({t:"warn",m:`⚠️ Carga ${c.id} entregada SIN POD — pídelo hoy pa' poder facturar.`});
+    if(!c.docs.rate&&c.estado!=="Nueva")A.push({t:"warn",m:`⚠️ Carga ${c.id} sin Rate Con firmado.`});
+    if(c.estado==="Nueva"&&!c.docs.rate)A.push({t:"warn",m:`⚠️ Carga ${c.id} (${c.destino}) sigue sin rate con firmado del broker.`});
+  });
+  db.carriers.forEach(k=>{if(k.seguro){const dias=Math.round((new Date(k.seguro)-new Date())/864e5);if(dias<=15&&dias>=0)A.push({t:"warn",m:`⚠️ El seguro de ${k.nombre} vence en ${dias} días (${k.seguro}).`});if(dias<0)A.push({t:"rojo",m:`🔴 Seguro VENCIDO de ${k.nombre} — no asignar cargas.`})}});
+  document.getElementById("alertas").innerHTML = A.length? A.map(a=>`<div class="alerta ${a.t==="warn"?"warn":""}"><span class="dot"></span>${a.m}</div>`).join("") : `<div class="sin-alertas">✅ Sin alertas: documentos al día y ningún cobro vencido.</div>`;
+  // carriers
+  document.getElementById("listaCarriers").innerHTML = db.carriers.length? db.carriers.map(k=>`
+    <div class="carrier"><b>${esc(k.nombre)}</b> <span class="badge ok">${esc(k.equipo||"")}</span>
+      <div class="meta">${esc(k.mc||"")}<br>📞 ${esc(k.tel||"—")} · ✉️ ${esc(k.email||"—")}<br>Factoring: ${esc(k.factoring||"—")}<br>Seguro vence: ${esc(k.seguro||"—")}${k.notas?`<br>📝 ${esc(k.notas)}`:""}</div>
+      <div class="ops"><button class="btn btn-sm" onclick="abrirCarrier('${k.id}')">Editar</button>
+      <button class="btn btn-sm btn-rojo" onclick="borrarCarrierDirecto('${k.id}')">Borrar</button></div></div>`).join("") : `<p class="nota">Sin carriers todavía.</p>`;
+  // cobros
+  const cob=db.cargas.filter(c=>c.factura>0).sort((a,b)=>(a.pagada-b.pagada)||String(a.vence).localeCompare(String(b.vence)));
+  document.getElementById("listaCobros").innerHTML = cob.length? cob.map(c=>`<div style="border-bottom:1px dashed var(--linea);padding:6px 0">
+    <b>${c.id}</b> · ${dinero(c.factura)} — ${c.pagada?'<span style="color:var(--verde);font-weight:700">PAGADO</span>':vencida(c)?'<span style="color:var(--rojo);font-weight:700">VENCIDO '+c.vence+'</span>':'vence '+ (c.vence||"—")}
+    ${c.pagada?"":` <button class="btn btn-sm btn-verde" onclick="marcarPagada('${c.id}')">Marcar pagado</button>`}</div>`).join("") : "Sin facturas.";
+  // kanban
+  document.getElementById("kanban").innerHTML = ESTADOS.map((e,i)=>{
+    const cs=db.cargas.filter(c=>c.estado===e);
+    return `<section class="carril"><header>${e}<span class="n">${cs.length}</span></header><div class="drop">
+    ${cs.map(c=>`<article class="carga ${vencida(c)?"vencida":""}">
+      <h3>${c.id}</h3><div class="ruta">${esc(c.origen)} → ${esc(c.destino)}</div>
+      <div class="det">🚚 ${esc(carrierDe(c.carrier))}<br>📦 ${esc(c.mercancia||"—")}<br>📅 ${c.pickup||"—"} → ${c.entrega||"—"}${c.notas?`<br>📝 ${esc(c.notas)}`:""}</div>
+      <div style="margin-top:5px">Rate: <span class="rate">${dinero(c.rate)}</span> · Factura: ${dinero(c.factura)}</div>
+      <div class="docs">
+        <button class="doc ${c.docs.rate?"on":""}" onclick="toggleDoc('${c.id}','rate')">Rate Con ${c.docs.rate?"✓":""}</button>
+        <button class="doc ${c.docs.bol?"on":""}" onclick="toggleDoc('${c.id}','bol')">BOL ${c.docs.bol?"✓":""}</button>
+        <button class="doc ${c.docs.pod?"on":""}" onclick="toggleDoc('${c.id}','pod')">POD ${c.docs.pod?"✓":""}</button>
+      </div>
+      <div class="cobro">${c.pagada?'<span class="pag">✅ Cobro pagado</span>':vencida(c)?`<span class="venc">🔴 VENCIDO ${c.vence} · ${dinero(c.factura)}</span>`:`⏳ Vence ${c.vence||"—"} · ${dinero(c.factura)}`}</div>
+      <div class="ops">
+        ${i>0?`<button class="btn btn-sm" onclick="mover('${c.id}',-1)">◀</button>`:""}
+        ${i<ESTADOS.length-1?`<button class="btn btn-sm btn-ambar" onclick="mover('${c.id}',1)">▶ Avanzar</button>`:""}
+        <button class="btn btn-sm" onclick="abrirCarga('${c.id}')">Editar</button>
+      </div></article>`).join("") || '<p class="nota" style="text-align:center">Sin cargas</p>'}
+    </div></section>`}).join("");
+  // select carriers en modal
+  document.getElementById("cCarrier").innerHTML=db.carriers.map(k=>`<option value="${k.id}">${esc(k.nombre)}</option>`).join("");
+  document.getElementById("cEstado").innerHTML=ESTADOS.map(e=>`<option>${e}</option>`).join("");
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function abrir(id){document.getElementById(id).classList.add("abierto")}
+function cerrar(id){document.getElementById(id).classList.remove("abierto")}
+
+/* Cargas */
+function abrirCarga(id){
+  const c=db.cargas.find(x=>x.id===id);
+  if(!c && db.plan!=="pro" && db.cargas.length>=LIMITE_GRATIS){comprar("Pro","Has llegado al límite de 5 cargas de la versión gratis.");return}
+  document.getElementById("tCarga").textContent=c?("Editar carga "+c.id):"Nueva carga";
+  document.getElementById("btnBorrarCarga").style.display=c?"":"none";
+  document.getElementById("cId").value=c?c.id:"";
+  document.getElementById("cOrigen").value=c?c.origen:""; document.getElementById("cDestino").value=c?c.destino:"";
+  if(c)document.getElementById("cCarrier").value=c.carrier;
+  document.getElementById("cEstado").value=c?c.estado:"Nueva";
+  document.getElementById("cMercancia").value=c?c.mercancia:""; document.getElementById("cRate").value=c?c.rate:"";
+  document.getElementById("cPickup").value=c?c.pickup:""; document.getElementById("cEntrega").value=c?c.entrega:"";
+  document.getElementById("cFactura").value=c?c.factura:""; document.getElementById("cVence").value=c?c.vence:"";
+  document.getElementById("cDocRate").checked=c?c.docs.rate:false; document.getElementById("cDocBol").checked=c?c.docs.bol:false;
+  document.getElementById("cDocPod").checked=c?c.docs.pod:false; document.getElementById("cPagada").checked=c?c.pagada:false;
+  document.getElementById("cNotas").value=c?c.notas:"";
+  abrir("fCarga");
+}
+function guardarCarga(){
+  const id=document.getElementById("cId").value;
+  const datos={origen:document.getElementById("cOrigen").value.trim(),destino:document.getElementById("cDestino").value.trim(),
+    carrier:document.getElementById("cCarrier").value,estado:document.getElementById("cEstado").value,
+    mercancia:document.getElementById("cMercancia").value.trim(),rate:Number(document.getElementById("cRate").value||0),
+    pickup:document.getElementById("cPickup").value,entrega:document.getElementById("cEntrega").value,
+    factura:Number(document.getElementById("cFactura").value||0),vence:document.getElementById("cVence").value,
+    pagada:document.getElementById("cPagada").checked,
+    docs:{rate:document.getElementById("cDocRate").checked,bol:document.getElementById("cDocBol").checked,pod:document.getElementById("cDocPod").checked},
+    notas:document.getElementById("cNotas").value.trim()};
+  if(!datos.origen||!datos.destino){alert("Escribe origen y destino.");return}
+  if(datos.pagada)datos.estado="Pagada";
+  if(id){Object.assign(db.cargas.find(x=>x.id===id),datos)}
+  else{const n=1046+db.cargas.length;db.cargas.push({id:"L-"+n,...datos})}
+  guardar();cerrar("fCarga");
+}
+function borrarCarga(){const id=document.getElementById("cId").value;if(confirm("¿Borrar esta carga?")){db.cargas=db.cargas.filter(x=>x.id!==id);guardar();cerrar("fCarga")}}
+function mover(id,dir){const c=db.cargas.find(x=>x.id===id);const i=ESTADOS.indexOf(c.estado);const n=Math.min(ESTADOS.length-1,Math.max(0,i+dir));c.estado=ESTADOS[n];if(c.estado==="Pagada")c.pagada=true;guardar()}
+function toggleDoc(id,doc){const c=db.cargas.find(x=>x.id===id);c.docs[doc]=!c.docs[doc];guardar()}
+function marcarPagada(id){const c=db.cargas.find(x=>x.id===id);c.pagada=true;c.estado="Pagada";guardar()}
+
+/* Carriers */
+function abrirCarrier(id){
+  const k=db.carriers.find(x=>x.id===id);
+  document.getElementById("tCarrier").textContent=k?"Editar carrier":"Nuevo carrier";
+  document.getElementById("btnBorrarCarrier").style.display=k?"":"none";
+  document.getElementById("kId").value=k?k.id:"";
+  ["Nombre","Mc","Equipo","Tel","Email","Factoring","Seguro","Notas"].forEach(f=>{
+    document.getElementById("k"+f).value=k?(k[f.toLowerCase()]||""):""});
+  abrir("fCarrier");
+}
+function guardarCarrier(){
+  const id=document.getElementById("kId").value;
+  const k={nombre:document.getElementById("kNombre").value.trim(),mc:document.getElementById("kMc").value.trim(),
+    equipo:document.getElementById("kEquipo").value.trim(),tel:document.getElementById("kTel").value.trim(),
+    email:document.getElementById("kEmail").value.trim(),factoring:document.getElementById("kFactoring").value.trim(),
+    seguro:document.getElementById("kSeguro").value,notas:document.getElementById("kNotas").value.trim()};
+  if(!k.nombre){alert("Escribe el nombre del carrier.");return}
+  if(id)Object.assign(db.carriers.find(x=>x.id===id),k); else db.carriers.push({id:uid("k"),...k});
+  guardar();cerrar("fCarrier");
+}
+function borrarCarrier(){const id=document.getElementById("kId").value;if(confirm("¿Borrar este carrier?")){db.carriers=db.carriers.filter(x=>x.id!==id);guardar();cerrar("fCarrier")}}
+function borrarCarrierDirecto(id){if(confirm("¿Borrar este carrier?")){db.carriers=db.carriers.filter(x=>x.id!==id);guardar()}}
+
+/* Compra / Pro */
+function comprar(plan,extra){
+  document.getElementById("tCompra").textContent="DispatchDesk "+plan+" — "+(plan==="Pro"?"$99":"$49")+" pago único";
+  document.getElementById("dCompra").innerHTML=(extra?extra+"<br><br>":"")+(plan==="Pro"
+    ?"<b>Pro incluye:</b> cargas y carriers <b>ilimitados</b>, tablero kanban completo, control de documentos (Rate Con · BOL · POD), cobros y alertas de vencidos, <b>plantilla de Rate Confirmation</b> y <b>contrato Carrier–Dispatcher</b> descargables dentro de la app, exportar/importar copia de seguridad."
+    :"<b>Base incluye:</b> tablero kanban completo, carriers ilimitados, hasta <b>25 cargas</b> guardadas, control de documentos (Rate Con · BOL · POD), cobros/facturas con alertas de vencidos y copia de seguridad exportable. Sin mensualidad.");
+  document.getElementById("mailCompra").href="mailto:swingbravo@gmail.com?subject="+encodeURIComponent("Quiero DispatchDesk "+plan)+"&body="+encodeURIComponent("Hola, quiero comprar DispatchDesk "+plan+". Envíenme el enlace de pago y mi código de licencia.");
+  abrir("fCompra");
+}
+function activarPro(){
+  const cod=document.getElementById("codigoPro").value.trim().toUpperCase();
+  if(cod.startsWith("DD-PRO")||cod==="PROFE-PRO-99"){db.plan="pro";guardar();alert("✅ Plan Pro activado. ¡A despachar!")}
+  else alert("Código no reconocido. Revisa el código que llegó a tu email tras la compra.");
+}
+function plantilla(tipo){
+  if(db.plan!=="pro"){comprar("Pro","Las plantillas son parte del plan Pro.");return}
+  const c=db.cargas[0]||{};
+  const txt = tipo==="ratecon"
+   ? `<h1>RATE CONFIRMATION</h1><p>DispatchDesk — Plantilla Pro</p><hr><p><b>Load #:</b> ${c.id||"L-____"} &nbsp; <b>Carrier:</b> ${carrierDe(c.carrier)}</p><p><b>Pickup:</b> ${c.origen||"____"} — ${c.pickup||"____"}</p><p><b>Delivery:</b> ${c.destino||"____"} — ${c.entrega||"____"}</p><p><b>Commodity:</b> ${c.mercancia||"____"}</p><p><b>Rate (all-in):</b> ${dinero(c.rate)}</p><p>Terms: Rate includes fuel surcharge. Detention $50/hr after 2 hrs with in/out times on BOL. Lumper paid by broker with receipt. POD must be sent within 24 hrs of delivery.</p><p style="margin-top:40px">Carrier signature: ______________________ &nbsp; Date: __________</p>`
+   : `<h1>CARRIER–DISPATCHER AGREEMENT</h1><p>DispatchDesk — Plantilla Pro</p><hr><p>This Agreement is between the Carrier and the Dispatcher for dispatch services: load booking, rate negotiation, paperwork (Rate Con, BOL, POD) and invoicing support.</p><p><b>Fee:</b> ____% of gross load revenue (or flat $____/week), payable weekly.</p><p><b>Term:</b> month-to-month; either party may cancel with 7 days written notice. Carrier keeps full authority over its equipment, drivers and safety compliance. Dispatcher is not a broker and does not take possession of freight.</p><p style="margin-top:40px">Carrier: ______________________ &nbsp; Dispatcher: ______________________ &nbsp; Date: __________</p>`;
+  const w=window.open("","_blank");w.document.write("<html><head><title>DispatchDesk Pro</title><style>body{font-family:Arial;padding:40px;line-height:1.6}</style></head><body>"+txt+"<p><i>Plantilla general — revísala con tu contador/abogado antes de usarla como contrato.</i></p></body></html>");w.document.close();
+}
+
+/* Copia de seguridad */
+function exportar(){const a=document.createElement("a");a.href="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(db,null,2));a.download="dispatchdesk-respaldo.json";a.click()}
+function importar(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{db=JSON.parse(r.result);guardar();alert("✅ Copia importada.")}catch(e){alert("Archivo no válido.")}};r.readAsText(f)}
+function resetDemo(){if(confirm("¿Restablecer los datos de ejemplo? Se borra lo guardado.")){db=demo();guardar()}}
+
+render();
+</script>
+</body>
+</html>
